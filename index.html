@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, shrink-to-fit=no, viewport-fit=cover">
+  <title>Incoming QC · 智能入库检验</title>
+  <style>
+    :root {
+      --pri: #0a2e2a;
+      --pri-light: #1a4a3f;
+      --accent: #e8a817;
+      --pass: #0d7c4b;
+      --fail: #c0392b;
+      --warn: #e67e22;
+      --bg: #f4f6f9;
+      --card: #ffffff;
+      --border: #e0e4ea;
+      --text: #1a1f2b;
+      --sub: #6b7280;
+      --radius: 16px;
+      --shadow: 0 4px 20px rgba(0,0,0,0.04);
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body {
+      background: var(--bg);
+      font-family: 'Inter', 'SF Pro Display', 'PingFang SC', system-ui, -apple-system, sans-serif;
+      display: flex;
+      justify-content: center;
+      padding: 10px;
+      color: var(--text);
+      -webkit-tap-highlight-color: transparent;
+    }
+    .app {
+      width: 100%;
+      max-width: 500px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    
+    /* Header */
+    .header {
+      background: var(--pri);
+      color: white;
+      padding: 18px 20px;
+      border-radius: var(--radius);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 6px 20px rgba(10,46,42,0.25);
+    }
+    .header h1 { font-size: 1.3rem; font-weight: 700; letter-spacing: -0.3px; }
+    .header .badge {
+      background: var(--accent);
+      color: #000;
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 5px 10px;
+      border-radius: 20px;
+    }
+    .batch-display {
+      background: rgba(255,255,255,0.12);
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      letter-spacing: 0.5px;
+    }
+
+    /* Cards */
+    .card {
+      background: var(--card);
+      border-radius: var(--radius);
+      padding: 16px 18px;
+      box-shadow: var(--shadow);
+      border: 1px solid var(--border);
+    }
+    .card-title {
+      font-weight: 700;
+      font-size: 0.9rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--pri);
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card-title .icon { font-size: 1.2rem; }
+
+    /* Form Elements */
+    .row {
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+      flex-wrap: wrap;
+    }
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      flex: 1;
+      min-width: 120px;
+    }
+    .field label {
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: var(--sub);
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+    select, input, textarea {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1.5px solid var(--border);
+      font-size: 0.9rem;
+      background: #fafbfc;
+      color: var(--text);
+      font-weight: 500;
+      transition: 0.2s;
+      appearance: none;
+      -webkit-appearance: none;
+      font-family: inherit;
+    }
+    select {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      padding-right: 36px;
+    }
+    select:focus, input:focus, textarea:focus {
+      outline: none;
+      border-color: var(--pri-light);
+      box-shadow: 0 0 0 3px rgba(10,46,42,0.08);
+    }
+    input[type="number"] { -moz-appearance: textfield; }
+    input[type="number"]::-webkit-outer-spin-button,
+    input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+    /* SKU Preview */
+    .sku-preview {
+      background: #f0f7f4;
+      border: 1px dashed #b8d9c8;
+      border-radius: 12px;
+      padding: 10px 14px;
+      font-family: 'SF Mono', 'Cascadia Code', monospace;
+      font-weight: 700;
+      font-size: 1rem;
+      color: var(--pri);
+      text-align: center;
+      letter-spacing: 0.5px;
+    }
+
+    /* QC Scoring */
+    .score-bar {
+      display: flex;
+      gap: 8px;
+      margin: 8px 0;
+    }
+    .score-item {
+      flex: 1;
+      text-align: center;
+      padding: 8px 4px;
+      border-radius: 10px;
+      font-weight: 700;
+      font-size: 0.75rem;
+    }
+    .score-pass { background: #e6f4ed; color: var(--pass); }
+    .score-concession { background: #fef3e2; color: var(--warn); }
+    .score-reject { background: #fde8e8; color: var(--fail); }
+    
+    .defect-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin: 6px 0;
+    }
+    .defect-row select, .defect-row input {
+      padding: 10px 12px;
+      font-size: 0.8rem;
+    }
+
+    .btn {
+      padding: 14px 20px;
+      border-radius: 14px;
+      font-weight: 700;
+      font-size: 1rem;
+      border: none;
+      cursor: pointer;
+      transition: 0.2s;
+      letter-spacing: 0.3px;
+      width: 100%;
+    }
+    .btn-primary {
+      background: var(--pri);
+      color: white;
+      box-shadow: 0 6px 18px rgba(10,46,42,0.3);
+    }
+    .btn-primary:active { transform: scale(0.97); background: #07211d; }
+    .btn-outline {
+      background: white;
+      color: var(--pri);
+      border: 1.5px solid var(--pri);
+    }
+    .btn-sm {
+      padding: 8px 14px;
+      font-size: 0.75rem;
+      width: auto;
+      border-radius: 10px;
+    }
+    .btn-remove {
+      background: #fee2e2;
+      color: var(--fail);
+      border: none;
+      padding: 8px 10px;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+
+    .result-badge {
+      font-size: 0.85rem;
+      font-weight: 700;
+      padding: 10px 16px;
+      border-radius: 12px;
+      text-align: center;
+      margin-top: 8px;
+    }
+    .result-accept { background: #d1fae5; color: #065f46; }
+    .result-reject { background: #fee2e2; color: #991b1b; }
+    .result-concession { background: #fef3c7; color: #92400e; }
+
+    .aql-box {
+      background: #f8fafc;
+      border-radius: 12px;
+      padding: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.8rem;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    /* 隐藏 iframe */
+    #hiddenFrame { display: none; }
+
+    .toast {
+      position: fixed;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--pri);
+      color: white;
+      padding: 12px 24px;
+      border-radius: 30px;
+      font-weight: 600;
+      font-size: 0.9rem;
+      z-index: 999;
+      opacity: 0;
+      transition: opacity 0.3s;
+      pointer-events: none;
+    }
+    .toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+<div class="app">
+  <!-- Toast 提示 -->
+  <div class="toast" id="toast"></div>
+
+  <!-- Header -->
+  <div class="header">
+    <div>
+      <h1>📦 Incoming QC</h1>
+      <span style="font-size:0.7rem;opacity:0.8;">智能入库检验系统</span>
+    </div>
+    <div class="batch-display" id="batchNo">BATCH: --</div>
+  </div>
+
+  <!-- 表单 -->
+  <form id="qcForm" target="hiddenFrame" method="POST">
+    <!-- SKU 构建区 -->
+    <div class="card">
+      <div class="card-title"><span class="icon">🧩</span> SKU 构建</div>
+      <div class="row">
+        <div class="field">
+          <label>Shape</label>
+          <select id="shape" name="shape" required>
+            <option value="">选择形状</option>
+            <option value="Round">Round</option>
+            <option value="Square">Square</option>
+            <option value="Rectangular">Rectangular</option>
+            <option value="Hexagon">Hexagon</option>
+            <option value="Flat">Flat</option>
+            <option value="Angle">Angle</option>
+            <option value="Channel">Channel</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Grade</label>
+          <select id="grade" name="grade" required>
+            <option value="">选择等级</option>
+            <option value="304">304</option>
+            <option value="304L">304L</option>
+            <option value="316">316</option>
+            <option value="316L">316L</option>
+            <option value="201">201</option>
+            <option value="430">430</option>
+            <option value="2205">2205 Duplex</option>
+          </select>
+        </div>
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <div class="field">
+          <label>Surface</label>
+          <select id="surface" name="surface" required>
+            <option value="">选择表面</option>
+            <option value="BA">BA</option>
+            <option value="2B">2B</option>
+            <option value="No.4">No.4</option>
+            <option value="HL">HL</option>
+            <option value="Mirror">Mirror</option>
+            <option value="Pickled">Pickled</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>C/S Dim</label>
+          <select id="csDim" name="csDim" required>
+            <option value="">先选Shape</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Thickness</label>
+          <select id="thickness" name="thickness" required>
+            <option value="">厚度</option>
+            <option value="0.5mm">0.5mm</option>
+            <option value="0.8mm">0.8mm</option>
+            <option value="1.0mm">1.0mm</option>
+            <option value="1.2mm">1.2mm</option>
+            <option value="1.5mm">1.5mm</option>
+            <option value="2.0mm">2.0mm</option>
+            <option value="3.0mm">3.0mm</option>
+          </select>
+        </div>
+      </div>
+      <div class="sku-preview" id="skuPreview" style="margin-top:10px;">
+        SKU: — — —
+      </div>
+    </div>
+
+    <!-- 供应商 & 批次信息 -->
+    <div class="card">
+      <div class="card-title"><span class="icon">🏭</span> 来料信息</div>
+      <div class="row">
+        <div class="field">
+          <label>Supplier</label>
+          <select id="supplier" name="supplier" required>
+            <option value="">选择供应商</option>
+            <option value="DAIDO STEEL">DAIDO STEEL</option>
+            <option value="NIPPON STEEL">NIPPON STEEL</option>
+            <option value="POSCO">POSCO</option>
+            <option value="BAOSTEEL">BAOSTEEL</option>
+            <option value="TSINGSHAN">TSINGSHAN</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Lot / Heat No.</label>
+          <input type="text" id="heatNo" name="heatNo" placeholder="炉号/热编号">
+        </div>
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <div class="field">
+          <label>来料总数 (pcs)</label>
+          <input type="number" id="totalQty" name="totalQty" placeholder="总数量" min="1" required>
+        </div>
+        <div class="field">
+          <label>COC编号</label>
+          <input type="text" id="cocNo" name="cocNo" placeholder="供应商COC">
+        </div>
+      </div>
+      <div class="aql-box" style="margin-top:10px;">
+        <span>📐 <strong>AQL抽样:</strong></span>
+        <span id="aqlResult">等待输入总数...</span>
+      </div>
+      <input type="hidden" id="sampleSize" name="sampleSize" value="">
+      <input type="hidden" id="skuCode" name="skuCode" value="">
+    </div>
+
+    <!-- QC 检验区 -->
+    <div class="card">
+      <div class="card-title"><span class="icon">🔬</span> 质量检验</div>
+      
+      <!-- 缺陷记录 -->
+      <label style="font-size:0.75rem;font-weight:600;color:var(--sub);">缺陷记录</label>
+      <div id="defectList">
+        <!-- 动态添加缺陷 -->
+      </div>
+      <button type="button" class="btn-outline btn-sm" onclick="addDefect()" style="margin-top:8px;">+ 添加缺陷</button>
+
+      <!-- 量化评分 -->
+      <div style="margin-top:14px;">
+        <label style="font-size:0.75rem;font-weight:600;color:var(--sub);">综合评分 (0-100)</label>
+        <div class="row">
+          <div class="field">
+            <label>外观</label>
+            <input type="number" id="scoreVisual" name="scoreVisual" value="100" min="0" max="100" placeholder="100">
+          </div>
+          <div class="field">
+            <label>尺寸</label>
+            <input type="number" id="scoreDim" name="scoreDim" value="100" min="0" max="100" placeholder="100">
+          </div>
+          <div class="field">
+            <label>材料</label>
+            <input type="number" id="scoreMaterial" name="scoreMaterial" value="100" min="0" max="100" placeholder="100">
+          </div>
+        </div>
+        <div class="score-bar">
+          <div class="score-item score-pass">≥85 放行</div>
+          <div class="score-item score-concession">70-84 特采</div>
+          <div class="score-item score-reject">&lt;70 退货</div>
+        </div>
+        <div id="scoreResult" style="text-align:center;font-weight:700;margin-top:6px;"></div>
+      </div>
+
+      <!-- 检验备注 -->
+      <div class="field" style="margin-top:10px;">
+        <label>检验员备注</label>
+        <textarea id="qcNotes" name="qcNotes" rows="2" placeholder="补充说明..."></textarea>
+      </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary" id="submitBtn">✅ 提交检验报告</button>
+    <div style="text-align:center;font-size:0.7rem;color:var(--sub);margin:6px 0 20px;">iframe提交 · 数据直传Google Sheets</div>
+  </form>
+</div>
+
+<iframe name="hiddenFrame" id="hiddenFrame"></iframe>
+
+<script>
+  // ===== 自动生成批次号 =====
+  function generateBatchNo() {
+    const now = new Date();
+    const y = String(now.getFullYear()).slice(2);
+    const m = String(now.getMonth()+1).padStart(2,'0');
+    const d = String(now.getDate()).padStart(2,'0');
+    const seq = Math.floor(Math.random()*900+100);
+    return `QC${y}${m}${d}-${seq}`;
+  }
+  document.getElementById('batchNo').textContent = 'BATCH: ' + generateBatchNo();
+
+  // ===== Shape → C/S Dim 联动 =====
+  const dimMap = {
+    'Round': ['6mm','8mm','10mm','12mm','16mm','19mm','25mm','32mm','38mm','50mm','¼"','½"','¾"'],
+    'Square': ['6x6mm','10x10mm','12x12mm','20x20mm','25x25mm','30x30mm'],
+    'Rectangular': ['10x5mm','20x10mm','25x15mm','30x20mm','40x20mm','1½"x1¼"','2"x1"'],
+    'Hexagon': ['8mm','10mm','14mm','17mm','19mm','24mm','30mm'],
+    'Flat': ['12x3mm','20x5mm','25x6mm','30x5mm','40x8mm','1"x⅛"'],
+    'Angle': ['20x20x3mm','25x25x3mm','30x30x3mm','40x40x4mm'],
+    'Channel': ['30x15mm','40x20mm','50x25mm','75x40mm']
+  };
+  const shapeSel = document.getElementById('shape');
+  const csDimSel = document.getElementById('csDim');
+  shapeSel.addEventListener('change', ()=>{
+    const dims = dimMap[shapeSel.value] || [];
+    csDimSel.innerHTML = '<option value="">选择尺寸</option>';
+    dims.forEach(d=>{ const o=document.createElement('option'); o.value=d; o.textContent=d; csDimSel.appendChild(o); });
+    updateSKU();
+  });
+  csDimSel.addEventListener('change', updateSKU);
+  document.getElementById('grade').addEventListener('change', updateSKU);
+  document.getElementById('surface').addEventListener('change', updateSKU);
+  document.getElementById('thickness').addEventListener('change', updateSKU);
+
+  function updateSKU() {
+    const s=shapeSel.value||'?', g=document.getElementById('grade').value||'?',
+          sf=document.getElementById('surface').value||'?', c=csDimSel.value||'?',
+          t=document.getElementById('thickness').value||'?';
+    const code = `${s}-${g}-${sf}-${c}-${t}`.toUpperCase().replace(/\s+/g,'');
+    document.getElementById('skuPreview').textContent = 'SKU: ' + code;
+    document.getElementById('skuCode').value = code;
+  }
+
+  // ===== AQL 自动计算 =====
+  document.getElementById('totalQty').addEventListener('input', calcAQL);
+  function calcAQL() {
+    const qty = parseInt(document.getElementById('totalQty').value) || 0;
+    let sample=0, ac=0, re=1;
+    if(qty>=2 && qty<=8){sample=2;ac=0;re=1}
+    else if(qty<=15){sample=3;ac=0;re=1}
+    else if(qty<=25){sample=5;ac=0;re=1}
+    else if(qty<=50){sample=8;ac=1;re=2}
+    else if(qty<=90){sample=13;ac=1;re=2}
+    else if(qty<=150){sample=20;ac=2;re=3}
+    else if(qty<=280){sample=32;ac=3;re=4}
+    else if(qty<=500){sample=50;ac=5;re=6}
+    else if(qty<=1200){sample=80;ac=7;re=8}
+    else {sample=125;ac=10;re=11}
+    document.getElementById('aqlResult').innerHTML = `抽 <strong>${sample}</strong> pcs | Ac=${ac} Re=${re} (AQL 2.5)`;
+    document.getElementById('sampleSize').value = sample;
+  }
+
+  // ===== 动态缺陷记录 =====
+  function addDefect(type='',severity='Minor',qty=1) {
+    const div = document.createElement('div');
+    div.className = 'defect-row';
+    div.innerHTML = `
+      <select name="defectType[]" style="flex:2;">
+        <option value="刮花" ${type==='刮花'?'selected':''}>刮花</option>
+        <option value="凹坑" ${type==='凹坑'?'selected':''}>凹坑</option>
+        <option value="锈蚀" ${type==='锈蚀'?'selected':''}>锈蚀</option>
+        <option value="毛刺" ${type==='毛刺'?'selected':''}>毛刺</option>
+        <option value="色差" ${type==='色差'?'selected':''}>色差</option>
+        <option value="变形" ${type==='变形'?'selected':''}>变形</option>
+        <option value="裂纹" ${type==='裂纹'?'selected':''}>裂纹</option>
+        <option value="尺寸超差" ${type==='尺寸超差'?'selected':''}>尺寸超差</option>
+      </select>
+      <select name="defectSeverity[]" style="flex:1.5;">
+        <option value="Minor" ${severity==='Minor'?'selected':''}>Minor</option>
+        <option value="Major" ${severity==='Major'?'selected':''}>Major</option>
+        <option value="Critical" ${severity==='Critical'?'selected':''}>Critical</option>
+      </select>
+      <input type="number" name="defectQty[]" value="${qty}" min="1" style="flex:1;" placeholder="数量">
+      <button type="button" class="btn-remove" onclick="this.parentElement.remove();updateScore()">✕</button>
+    `;
+    document.getElementById('defectList').appendChild(div);
+    updateScore();
+  }
+  // 默认添加一行
+  addDefect();
+
+  // ===== 实时评分计算 =====
+  ['scoreVisual','scoreDim','scoreMaterial'].forEach(id=>{
+    document.getElementById(id).addEventListener('input', updateScore);
+  });
+  function updateScore() {
+    const v=parseInt(document.getElementById('scoreVisual').value)||0;
+    const d=parseInt(document.getElementById('scoreDim').value)||0;
+    const m=parseInt(document.getElementById('scoreMaterial').value)||0;
+    // 缺陷扣分
+    const severities = document.getElementsByName('defectSeverity[]');
+    const qtys = document.getElementsByName('defectQty[]');
+    let penalty = 0;
+    for(let i=0;i<severities.length;i++){
+      const s=severities[i].value;
+      const q=parseInt(qtys[i].value)||0;
+      if(s==='Critical') penalty+=15*q;
+      else if(s==='Major') penalty+=7*q;
+      else penalty+=3*q;
+    }
+    const raw = (v+d+m)/3;
+    const final = Math.max(0, Math.min(100, raw - penalty));
+    const resEl = document.getElementById('scoreResult');
+    let cls='',txt='';
+    if(final>=85){cls='result-accept';txt='✅ 判定: 放行';}
+    else if(final>=70){cls='result-concession';txt='⚠️ 判定: 特采';}
+    else {cls='result-reject';txt='❌ 判定: 退货';}
+    resEl.innerHTML = `<span class="result-badge ${cls}">${txt} (${Math.round(final)}分)</span>`;
+    // 写入隐藏字段
+    let hf=document.getElementById('finalScore');
+    if(!hf){hf=document.createElement('input');hf.type='hidden';hf.name='finalScore';hf.id='finalScore';document.getElementById('qcForm').appendChild(hf);}
+    hf.value=Math.round(final);
+    let hd=document.getElementById('finalDecision');
+    if(!hd){hd=document.createElement('input');hd.type='hidden';hd.name='finalDecision';hd.id='finalDecision';document.getElementById('qcForm').appendChild(hd);}
+    hd.value=final>=85?'Accept':(final>=70?'Concession':'Reject');
+  }
+  updateScore();
+
+  // ===== 表单提交 =====
+  const form=document.getElementById('qcForm');
+  const toast=document.getElementById('toast');
+  function showToast(msg){toast.textContent=msg;toast.classList.add('show');setTimeout(()=>toast.classList.remove('show'),2000);}
+  
+  form.addEventListener('submit', function(e){
+    // 校验
+    if(!shapeSel.value||!document.getElementById('grade').value||!csDimSel.value||!document.getElementById('thickness').value||!document.getElementById('supplier').value||!document.getElementById('totalQty').value){
+      e.preventDefault();showToast('请完整填写SKU和来料信息');return;
+    }
+    showToast('📤 提交中...');
+  });
+</script>
+</body>
+</html>
